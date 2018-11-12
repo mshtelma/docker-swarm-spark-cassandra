@@ -14,6 +14,7 @@ object IngestUtils {
   import com.datastax.spark.connector._
 
   case class ParentFilterResult(filteredDf: DataFrame, errorDf: DataFrame)
+
   //Structure of error table
   val errorDfStruct = StructType(
     Seq(
@@ -25,7 +26,8 @@ object IngestUtils {
 
   /**
     * Creates empty data frame with predefined schema
-    * @param spark - spark session
+    *
+    * @param spark      - spark session
     * @param structType - structure of the data frame
     * @return empty DF with given schema
     */
@@ -35,7 +37,8 @@ object IngestUtils {
 
   /**
     * Logs duration of task
-    * @param name - name of the task
+    *
+    * @param name  - name of the task
     * @param block - lambda representing the task
     * @return any result returned by the task
     */
@@ -49,10 +52,11 @@ object IngestUtils {
 
   /**
     * runs lambda function in a try block and logs expeptions to DB
-    * @param spark - spark session
+    *
+    * @param spark    - spark session
     * @param keySpace - cassandra key space
-    * @param name - task name
-    * @param block - lambda function to run
+    * @param name     - task name
+    * @param block    - lambda function to run
     * @return VOID
     */
   def tryBlock[R](spark: SparkSession, keySpace: String, name: String)(block: => R): Any = {
@@ -68,9 +72,10 @@ object IngestUtils {
 
   /**
     * Logs error message to DB
-    * @param spark - spark session
-    * @param keySpace - cassandra key space
-    * @param title - title of task, which has produced exception
+    *
+    * @param spark        - spark session
+    * @param keySpace     - cassandra key space
+    * @param title        - title of task, which has produced exception
     * @param errorMessage - message to log
     */
   def logExceptionToDB(spark: SparkSession, keySpace: String, title: String, errorMessage: String): Unit = {
@@ -90,6 +95,7 @@ object IngestUtils {
 
   /**
     * Flattens structure fields  of DataFrame. Flattens only one level down.
+    *
     * @param df - dataframe
     * @return same dataframe but with flattened structure fields
     */
@@ -107,8 +113,9 @@ object IngestUtils {
   /**
     * Enforces foreign key constraints for child entities. Rows, containing foreign key values, which do not exist
     * in parent entities will be filtered out and returned as errors
-    * @param spark - Spark session
-    * @param srcDf - child data frame
+    *
+    * @param spark   - Spark session
+    * @param srcDf   - child data frame
     * @param srcName - child entity name
     * @param parents - map of parent data frames
     * @return - filtered child data frame
@@ -134,8 +141,9 @@ object IngestUtils {
 
   /**
     * Reads json file as Spark DF
-    * @param spark - Spark session
-    * @param path - folder with json file
+    *
+    * @param spark    - Spark session
+    * @param path     - folder with json file
     * @param fileName - json filename
     * @return - json data frame
     */
@@ -150,10 +158,11 @@ object IngestUtils {
     * This makes spark break lineage and calculate the results and save them to disk
     * In a case of server deployment can be changed to caching in memory using spark capabilities of save parquet somewhere in memory
     * (e.g. in Alluxio)
+    *
     * @param spark - Spark session
-    * @param df - data frame to cache
-    * @param name - name of the entity
-    * @param path - temp folder where the data frame will be cached
+    * @param df    - data frame to cache
+    * @param name  - name of the entity
+    * @param path  - temp folder where the data frame will be cached
     * @return - cached data frame
     */
   def cache(spark: SparkSession, df: DataFrame, name: String, path: String): DataFrame = {
@@ -163,18 +172,20 @@ object IngestUtils {
 
   /**
     * Ingests transformed Data Frame to Cassandra
-    * @param spark - spark session
-    * @param df - data frame to ingest
-    * @param tableName - table name to ingest
-    * @param keySpaceName - Cassandra Key Space
-    * @param partitionColumns - Cassandra partitioning keys
+    *
+    * @param spark             - spark session
+    * @param df                - data frame to ingest
+    * @param tableName         - table name to ingest
+    * @param keySpaceName      - Cassandra Key Space
+    * @param partitionColumns  - Cassandra partitioning keys
     * @param clusteringColumns - Cassandra clustering keys
     * @return - ingested data frame (points to cassandra table, which was ingested)
     */
   def ingest(spark: SparkSession, df: DataFrame, tableName: String, keySpaceName: String,
              partitionColumns: Seq[String],
              clusteringColumns: Option[Seq[String]] = None): DataFrame = {
-    time("Ingesting " + tableName) {
+    val task = "Ingesting " + tableName
+    time(task) {
       import com.datastax.spark.connector._
       import com.datastax.spark.connector.cql._
 
@@ -196,7 +207,9 @@ object IngestUtils {
       val oldCount = df.count()
       //val diff = df.select(partitionColumns.head).except(resDf.select(partitionColumns.head)).count()
       if (oldCount != newCount) {
-        println("Error: Loaded wrong number of rows for table " + tableName + " Expected: " + oldCount + " Actual: " + newCount)
+        val error = "Error: Loaded wrong number of rows for table " + tableName + " Expected: " + oldCount + " Actual: " + newCount
+        logger.error(error)
+        logExceptionToDB(spark, keySpaceName, task, error)
       }
       resDf
     }
@@ -204,6 +217,7 @@ object IngestUtils {
 
   /**
     * Transform really wide and sparse checkin table in vertical form
+    *
     * @param spark - spark session
     * @param srcDf - source chein json data frame
     * @return - verticalized congested data frame
@@ -223,6 +237,7 @@ object IngestUtils {
 
   /**
     * Add ID column to DataFrame
+    *
     * @param df - source DataFrame
     * @return - DataFrame with ID column
     */
@@ -233,9 +248,10 @@ object IngestUtils {
 
   /**
     * Saves row keys, that were filtered out, because of the missing parent rows to error table
-    * @param spark - spark session
-    * @param keySpaceName  - key space name
-    * @param dfs - DataFrames with error rows to save
+    *
+    * @param spark        - spark session
+    * @param keySpaceName - key space name
+    * @param dfs          - DataFrames with error rows to save
     */
   def saveKeyErrors(spark: SparkSession, keySpaceName: String, dfs: DataFrame*): Unit = {
     if (dfs.nonEmpty) {
@@ -256,8 +272,9 @@ object IngestUtils {
 
   /**
     * run CQL statement against Cassandra cluster
+    *
     * @param spark - spark session to obtain connection to Cassandra
-    * @param cql - statement to run
+    * @param cql   - statement to run
     */
   def runCQLCommand(spark: SparkSession, cql: String): Unit = {
     CassandraConnector(spark.sparkContext).withSessionDo(s => s.execute(cql))
