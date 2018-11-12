@@ -37,4 +37,6 @@ The Spark implementation of the pipeline consists of the main class IngestPipeli
 The pipeline implements full load scenario, so that the existing tables in cassandra are recreated and populated with the new data.
 The files are loaded in following order: at first two parent entities (user and business) are loaded.
 Afterwards all other dependent entities are loaded. During the load the foreign keys of the child entities are being checked against already loaded parents.
+After each entity was loaded, the number of loaded records is compared with the source file.
+The entities are also cached as parquet in temp folder in order to improve performance.
 

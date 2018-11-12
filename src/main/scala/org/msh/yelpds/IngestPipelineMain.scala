@@ -40,12 +40,13 @@ object IngestPipelineMain extends App {
     val path = new File(conf.dataFolder.getOrElse("/data/")).getAbsolutePath + "/"
     val tempPath = new File(conf.dataFolder.getOrElse("/temp_data/")).getAbsolutePath + "/"
 
+    // create key space if it does not exist
     runCQLCommand(spark, "CREATE KEYSPACE  IF NOT EXISTS " + keySpaceName + " WITH REPLICATION = {'class' : 'SimpleStrategy', 'replication_factor':1};")
-
+    //
     spark.setCassandraConf(CassandraConnectorConf.KeepAliveMillisParam.option(10000))
 
     time("Yelp dataset pipeline, FULL LOAD ") {
-
+      // at first parent entities are loaded. If any of them cannot be loaded, the whole pipeline must be stopped
       val parentDataFramesResult = Try {
 
         val businessDf = cache(spark, ingest(spark, readJson(spark, path, "yelp_academic_dataset_business.json"),
@@ -57,11 +58,14 @@ object IngestPipelineMain extends App {
         (businessDf, userDf)
       }
 
+      //now we can load all other entities
       parentDataFramesResult match {
         case Success(parentDataFrames) =>
+          //get loaded parent entities
           val businessDf = parentDataFrames._1
           val userDf = parentDataFrames._2
 
+          // Entity REVIEW
           tryBlock(spark, keySpaceName, "Loading REVIEW") {
             val reviewFilteredResult = filterChildEntity(spark, readJson(spark, path, "yelp_academic_dataset_review.json"),
               "review", Map("user" -> userDf, "business" -> businessDf))
@@ -70,8 +74,8 @@ object IngestPipelineMain extends App {
               Some(Seq("user_id", "business_id")))
             saveKeyErrors(spark, keySpaceName, reviewFilteredResult.errorDf)
           }
-
-          tryBlock(spark, keySpaceName, "Loading REVIEW") {
+          // Entity CHECKIN
+          tryBlock(spark, keySpaceName, "Loading CHECKIN") {
             val checkinFilterResult = filterChildEntity(spark, readJson(spark, path, "yelp_academic_dataset_checkin.json"),
               "checkin", Map("business" -> businessDf))
             val congestedCheckinDf = cache(spark, congestCheckIn(spark, checkinFilterResult.filteredDf), "checkin", tempPath)
@@ -79,7 +83,7 @@ object IngestPipelineMain extends App {
               keySpaceName, Seq("business_id", "column"))
             saveKeyErrors(spark, keySpaceName, checkinFilterResult.errorDf)
           }
-
+          // Entity PHOTO
           tryBlock(spark, keySpaceName, "Loading PHOTO") {
             val photoFilteredResult = filterChildEntity(spark, readJson(spark, path, "yelp_academic_dataset_photo.json"),
               "photo", Map("business" -> businessDf))
@@ -87,7 +91,7 @@ object IngestPipelineMain extends App {
             val photoDf = ingest(spark, photoFilteredDf, "photo", keySpaceName, Seq("photo_id"), Some(Seq("business_id")))
             saveKeyErrors(spark, keySpaceName, photoFilteredResult.errorDf)
           }
-
+          // Entity TIP
           tryBlock(spark, keySpaceName, "Loading TIP") {
             val tipFilteredResult = filterChildEntity(spark, readJson(spark, path, "yelp_academic_dataset_tip.json"), "tip",
               Map("user" -> userDf, "business" -> businessDf))
@@ -95,13 +99,14 @@ object IngestPipelineMain extends App {
             val tipDf = ingest(spark, tipFilteredDf, "tip", keySpaceName, Seq("user_id", "business_id", "id"))
             saveKeyErrors(spark, keySpaceName, tipFilteredResult.errorDf)
           }
-
+        //log errors to DB occurred during loading of user and business entities
         case Failure(e) => logExceptionToDB(spark, keySpaceName, "Cannot load primary files (users, business)", e.getMessage)
       }
 
 
     }
   } catch {
+    //log any other severe errors occurred during creation of spark session
     case e: Exception => logger.error(e.getMessage, e)
   }
 
