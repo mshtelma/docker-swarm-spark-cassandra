@@ -10,18 +10,6 @@ services:
     networks:
       - sparknet
 
-#  runner:
-#    image: mm:latest
-#    hostname: runner
-#    depends_on:
-#      - cassandra
-#    ports:
-#      - 4040:4040
-#    networks:
-#      - sparknet
-#    volumes:
-#      - /Users/ms250139/Sources/courses/DE/yelp_dataset:/data
-
   master:
     image: mshtelma/spark-base:latest
     command: bin/spark-class org.apache.spark.deploy.master.Master -h master
@@ -29,7 +17,7 @@ services:
     environment:
       MASTER: spark://master:7077
       SPARK_CONF_DIR: /conf
-      SPARK_PUBLIC_DNS: ${EXTERNAL_IP}
+#      SPARK_PUBLIC_DNS: ${EXTERNAL_IP}
     ports:
       - 6066:6066
       - 7077:7077
@@ -47,7 +35,7 @@ services:
       SPARK_CONF_DIR: /conf
       SPARK_WORKER_CORES: 2
       SPARK_WORKER_MEMORY: 1g
-      SPARK_PUBLIC_DNS: ${EXTERNAL_IP}
+#      SPARK_PUBLIC_DNS: ${EXTERNAL_IP}
     deploy:
       replicas: 3
     depends_on:

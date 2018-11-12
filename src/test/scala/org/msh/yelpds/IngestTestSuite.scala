@@ -93,7 +93,7 @@ class IngestTestSuite extends SparkFunSuite with SparkTemplate with BeforeAndAft
 
     val df = spark.createDataFrame(spark.sparkContext.parallelize(lines), schema = schema)
     val congestedDF = congestCheckIn(spark, df)
-    assertResult(6) {
+    assertResult(5) {
       congestedDF.count()
     }
   }
